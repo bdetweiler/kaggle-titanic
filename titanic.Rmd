@@ -1,0 +1,89 @@
+---
+title: "Titanic Survivors"
+author: "Brian Detweiler"
+date: "August 21, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Titanic Survivors
+
+```{r cars}
+library(tidyverse)
+library(pscl)
+library(boot)
+library(ROCR)
+titanic.train <- read_csv('data/train.csv')
+titanic.test <- read_csv('data/test.csv')
+titanic.train$Male <- ifelse(test = titanic.train$Sex == 'male', yes = 1, no = 0)
+titanic.test$Male <- ifelse(test = titanic.test$Sex == 'male', yes = 1, no = 0)
+
+# Remove NAs from Age
+titanic.train$Age[is.na(titanic.train$Age)] <- mean(titanic.train$Age, na.rm=T)
+titanic.test$Age[is.na(titanic.test$Age)] <- mean(titanic.test$Age, na.rm=T)
+```
+
+## Training a Logistic Regression Model
+
+```{r}
+train <- titanic.train[1:800,]
+test <- titanic.train[801:889,]
+
+glm.fit <- glm(Survived~Pclass+Age+Male+SibSp+Parch+Fare, family=binomial(link="logit"), data=train)
+summary(glm.fit)
+```
+
+Here, `Parch` and `Fare` are not significant, so we remove them.
+```{r}
+glm.fit <- glm(Survived~Pclass+Age+Male+SibSp, family=binomial(link="logit"), data=train)
+summary(glm.fit)
+anova(glm.fit, test="Chisq")
+pR2(glm.fit)
+
+fitted.results <- predict(glm.fit, newdata=test, type='response')
+
+# Apply the threshold for survived probability at 0.5
+fitted.results <- ifelse(fitted.results > 0.5, 1, 0)
+fitted.results
+
+error <- mean(fitted.results != test$Survived)
+
+print(paste('Accuracy', 1 - error))
+```
+
+Let's try this with k-Fold Cross Validation
+
+```{r}
+cost <- function(r, pi = 0) mean(abs(r-pi) > 0.5)
+cv.error <- cv.glm(train, cost=cost, glm.fit, K=10)
+accuracy <- 1 - cv.error$delta[1]
+accuracy
+```
+
+k-Fold Cross Validation yields an accuracy almost identical to the validation set approach.
+
+```{r}
+p <- predict(glm.fit, newdata=test, type="response")
+pr <- prediction(p, test$Survived)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+
+Now, let's build our submission file.
+
+```{r}
+read_csv('data/gender_submission.csv')
+
+# Run on the test dataset
+p <- predict(glm.fit, newdata=titanic.test, type="response")
+
+submission <- data_frame(PassengerId=titanic.test$PassengerId, Survived=(ifelse(p > 0.5, 1, 0)))
+write.csv(submission, file = 'data/submission.csv')
+```
