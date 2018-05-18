@@ -1,0 +1,63 @@
+---
+title: "Titanic Survivors"
+author: "Brian Detweiler"
+date: "August 21, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Titanic Survivors with Random Forest
+
+```{r cars}
+library('caret')
+library('caretEnsemble')
+library('party')
+
+
+library(pscl)
+library(boot)
+library(ROCR)
+library(stringr)
+library(gam)
+library(tidyverse)
+
+setwd('C:/views/kaggle-titanic/')
+titanic.train <- read_csv('data/train.csv')
+titanic.test <- read_csv('data/test.csv')
+
+titanic.train <- titanic.train %>% 
+  mutate(Cabin=replace(Cabin, is.na(Cabin), ""))
+
+titanic.test <- titanic.test %>% 
+  mutate(Cabin=replace(Cabin, is.na(Cabin), ""))
+
+titanic.train$Male <- ifelse(test = titanic.train$Sex == 'male', yes = 1, no = 0)
+titanic.test$Male <- ifelse(test = titanic.test$Sex == 'male', yes = 1, no = 0)
+
+# Remove NAs from Age
+titanic.train$Age[is.na(titanic.train$Age)] <- mean(titanic.train$Age, na.rm=T)
+titanic.test$Age[is.na(titanic.test$Age)] <- mean(titanic.test$Age, na.rm=T)
+```
+
+## Random forest
+### TODO: Get loss
+```{r}
+head(titanic.train)
+fit <- cforest(as.factor(Survived) ~ Pclass 
+                                   + Male 
+                                   + Age 
+                                   + SibSp 
+                                   + Parch 
+                                   + Fare 
+                                   + as.factor(Embarked),
+               data = titanic.train, 
+               controls=cforest_unbiased(ntree=2000, mtry=3))
+
+p <- predict(fit, newdata=titanic.test, OOB=TRUE, type = "response")
+submission <- data_frame(PassengerId=titanic.test$PassengerId, Survived=p)
+
+write_csv(submission, 'data/submission.csv')
+```
